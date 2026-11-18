@@ -430,8 +430,8 @@ function formHTML(c) {
     </div>
     ${p ? '' : '<div class="hint">O lançamento fica como “Previsto”. Só vira “Recebido” quando você tocar no ✓ da lista.</div>'}
     ${c ? '' : `<label>Repetição</label>
-    <select id="f_rep"><option value="unica">Única</option><option value="parcelada">Parcelada (mensal)</option><option value="fixa">Fixa mensal (12 meses)</option></select>
-    <div id="boxParc" hidden><label>Número de parcelas</label><input id="f_parc" type="number" min="2" max="60" value="2"><div class="hint">O valor informado acima é o de cada parcela.</div></div>`}
+    <select id="f_rep"><option value="unica">Única</option><option value="parcelada">Parcelada</option><option value="fixa">Fixa mensal (12 meses)</option></select>
+    <div id="boxParc" hidden><div class="grid2"><div><label>Intervalo</label><select id="f_int"><option value="1">Mensal</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div><div><label>Nº de parcelas</label><input id="f_parc" type="number" min="2" max="60" value="2"></div></div><div class="hint">O valor informado acima é o de cada parcela. A primeira vence na data escolhida.</div></div>`}
     <label>Observação (opcional)</label><textarea id="f_obs" rows="2">${esc(c?.obs || '')}</textarea>
     <button class="btn-p ${p ? '' : 'g'}" data-act="salvar">${c ? 'Salvar alterações' : (p ? '＋ Salvar conta' : '＋ Salvar recebimento')}</button>
     <button class="link" data-act="cancelar">Cancelar</button></div>`;
@@ -481,10 +481,11 @@ async function salvarConta() {
     } else {
       const rep = $('#f_rep').value;
       const n = rep === 'parcelada' ? Math.max(2, Math.min(60, parseInt($('#f_parc').value) || 2)) : rep === 'fixa' ? 12 : 1;
+      const passo = rep === 'parcelada' ? (parseInt($('#f_int').value) || 1) : 1;
       const serieId = n > 1 ? base().collection('contas').doc().id : null;
       const batch = db.batch();
       for (let i = 0; i < n; i++) {
-        const v = addMeses(venc, i);
+        const v = addMeses(venc, i * passo);
         const doc = base().collection('contas').doc();
         batch.set(doc, {
           ...dados, venc: v, mes: v.slice(0, 7), status: 'pendente', criadoEm: FV.serverTimestamp(),
