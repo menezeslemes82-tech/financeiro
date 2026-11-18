@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Contas">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>Controle de Contas</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b4f57'/%3E%3Cpath d='M18 14h28v38l-7-4-7 4-7-4-7 4z' fill='none' stroke='%23fff' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M25 26h14M25 35h14' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
@@ -29,6 +31,8 @@ label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;color:var(-
 #app{max-width:560px;margin:0 auto;min-height:100vh;padding-bottom:90px}
 header{background:var(--teal);color:#fff;padding:calc(env(safe-area-inset-top) + 14px) 16px 16px;border-radius:0 0 22px 22px}
 header h2{margin:0 0 10px;font-size:26px}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.inst{flex:none;background:#fff;color:var(--teal);border:0;border-radius:20px;padding:7px 13px;font-weight:700;font-size:13px;margin-top:2px}
 .seg{display:flex;background:rgba(255,255,255,.15);border-radius:12px;padding:3px;gap:3px}
 .seg button{flex:1;border:0;background:transparent;color:#fff;padding:8px 4px;border-radius:9px;font-weight:600;font-size:14px}
 .seg button.on{background:#fff;color:var(--teal)}
@@ -58,6 +62,8 @@ header h2{margin:0 0 10px;font-size:26px}
 .item{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin:8px 0}
 .item .r1{display:flex;justify-content:space-between;gap:10px;font-weight:700}
 .item .r1 .v{white-space:nowrap}
+.chk{flex:none;width:30px;height:30px;border-radius:50%;border:2px solid var(--line);background:#fff;color:transparent;font-weight:800;font-size:16px;line-height:1;padding:0}
+.chk.on{background:var(--green);border-color:var(--green);color:#fff}
 .item .sub{font-size:13px;color:var(--mut);margin-top:2px}
 .tags{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}
 .tag{font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--bg);color:var(--mut)}
@@ -118,7 +124,7 @@ nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stro
 <!-- APP -->
 <div id="app" hidden>
   <header>
-    <h2 id="titulo">Contas a pagar</h2>
+    <div class="hdr"><h2 id="titulo">Contas a pagar</h2><button class="inst" id="btnInstalar" data-act="instalar" hidden>⬇ Instalar app</button></div>
     <div class="seg" id="segEsc">
       <button data-act="escopo" data-v="tudo">Tudo</button>
       <button data-act="escopo" data-v="pessoal">👤 Pessoal</button>
@@ -308,13 +314,13 @@ function itemHTML(c) {
   const s = stInfo(c), p = c.tipo === 'pagar';
   const sub = c.status === 'pago'
     ? `${p ? 'Paga' : 'Recebida'} em ${fmtData(c.dataBaixa)} • venc. ${fmtDM(c.venc)}`
-    : `${p ? 'Vence em' : 'Recebimento em'} ${fmtData(c.venc)}`;
+    : `${p ? 'Vence em' : 'Previsto para'} ${fmtData(c.venc)}${c.dataCompra && c.dataCompra !== c.venc ? ' • lançado em ' + fmtDM(c.dataCompra) : ''}`;
   const parc = c.parcela ? ` • ${c.parcela}` : '';
   const btn = c.status === 'pago'
     ? `<button class="btn-o" data-act="reabrir" data-id="${c.id}">Reabrir</button>`
     : `<button class="btn-o ${p ? '' : 'g'}" data-act="baixa" data-id="${c.id}">${p ? 'Marcar como paga' : 'Confirmar recebimento'}</button>`;
   return `<div class="item">
-    <div class="r1"><span>${esc(c.descricao)}</span><span class="v">${brl(c.valor)}</span></div>
+    <div class="r1"><button class="chk ${c.status === 'pago' ? 'on' : ''}" data-act="${c.status === 'pago' ? 'reabrir' : 'baixa'}" data-id="${c.id}" aria-label="${p ? 'Marcar como paga' : 'Marcar como recebido'}">✓</button><span style="flex:1">${esc(c.descricao)}</span><span class="v">${brl(c.valor)}</span></div>
     <div class="sub">${sub}${parc}</div>
     <div class="tags"><span class="tag ${c.escopo}">${c.escopo === 'fazenda' ? '🌾 Fazenda' : '👤 Pessoal'}</span>${c.categoria ? `<span class="tag">${esc(c.categoria)}</span>` : ''}</div>
     ${c.obs ? `<div class="sub" style="margin-top:6px">📝 ${esc(c.obs)}</div>` : ''}
@@ -374,9 +380,10 @@ function formHTML(c) {
     <label>Categoria</label><select id="f_cat"></select>
     <input id="f_catnova" placeholder="Nome da nova categoria" style="margin-top:8px" hidden>
     <div class="grid2">
-      ${p ? `<div><label>Data da compra</label><input type="date" id="f_data1" value="${c?.dataCompra || hoje()}"></div>` : ''}
-      <div ${p ? '' : 'style="grid-column:1/3"'}><label>${p ? 'Data de vencimento' : 'Data do recebimento'}</label><input type="date" id="f_venc" value="${c?.venc || hoje()}"></div>
+      <div><label>${p ? 'Data da compra' : 'Data do lançamento'}</label><input type="date" id="f_data1" value="${c?.dataCompra || hoje()}"></div>
+      <div><label>${p ? 'Data de vencimento' : 'Previsão de recebimento'}</label><input type="date" id="f_venc" value="${c?.venc || hoje()}"></div>
     </div>
+    ${p ? '' : '<div class="hint">O lançamento fica como “Previsto”. Só vira “Recebido” quando você tocar no ✓ da lista.</div>'}
     ${c ? '' : `<label>Repetição</label>
     <select id="f_rep"><option value="unica">Única</option><option value="parcelada">Parcelada (mensal)</option><option value="fixa">Fixa mensal (12 meses)</option></select>
     <div id="boxParc" hidden><label>Número de parcelas</label><input id="f_parc" type="number" min="2" max="60" value="2"><div class="hint">O valor informado acima é o de cada parcela.</div></div>`}
@@ -417,11 +424,10 @@ async function salvarConta() {
       if (!catsDe(tipo, escopo).includes(categoria))
         await base().collection('config').doc('categorias').set({ lista: FV.arrayUnion({ n: categoria, e: escopo, t: tipo }) }, { merge: true });
     }
-    const dataCompra = p ? ($('#f_data1').value || venc) : null;
+    const dataCompra = $('#f_data1').value || venc;
     const obs = $('#f_obs').value.trim();
     localStorage.setItem('ultEsc', escopo);
-    const dados = { tipo, descricao, valor, categoria, escopo, obs };
-    if (p) dados.dataCompra = dataCompra;
+    const dados = { tipo, descricao, valor, categoria, escopo, obs, dataCompra };
     if (S.edit) {
       const ant = achar(S.edit);
       await base().collection('contas').doc(S.edit).update({ ...dados, venc, mes: venc.slice(0, 7) });
@@ -438,8 +444,7 @@ async function salvarConta() {
         batch.set(doc, {
           ...dados, venc: v, mes: v.slice(0, 7), status: 'pendente', criadoEm: FV.serverTimestamp(),
           ...(serieId ? { serieId } : {}),
-          ...(rep === 'parcelada' ? { parcela: `${i + 1}/${n}` } : rep === 'fixa' ? { parcela: 'fixa' } : {}),
-          ...(p && rep !== 'unica' ? { dataCompra } : {})
+          ...(rep === 'parcelada' ? { parcela: `${i + 1}/${n}` } : rep === 'fixa' ? { parcela: 'fixa' } : {})
         });
       }
       await batch.commit();
@@ -546,6 +551,8 @@ function renderMais() {
       <button class="btn-o" data-act="logout">Sair</button></div>
     <div class="card"><h3>Categorias próprias</h3>
       ${cust.length ? cust.map(c => `<div class="catrow"><span>${esc(c.n)} <span class="tag ${c.e}">${c.e === 'fazenda' ? 'Fazenda' : 'Pessoal'}</span> <span class="tag">${c.t === 'pagar' ? 'Pagar' : 'Receber'}</span></span><button class="ico" data-act="delcat" data-i="${c.i}">🗑</button></div>`).join('') : '<div class="hint">Nenhuma ainda. Crie ao lançar uma conta, escolhendo “＋ Nova categoria…”.</div>'}</div>
+    <div class="card" id="cardInst" ${instalado() ? 'hidden' : ''}><h3>Instalar no celular</h3><div class="hint" style="margin:0 0 10px">Fica um ícone na tela inicial, abre em tela cheia como um aplicativo.</div>
+      <button class="btn-o g" data-act="instalar">⬇ Baixar o app</button></div>
     <div class="card"><h3>Exportar</h3><div class="hint" style="margin:0 0 10px">Planilha com todos os lançamentos (abre no Excel).</div>
       <button class="btn-o" data-act="csv">Baixar CSV</button></div>
     <div class="foot">AIMEX SOFTWARE</div>`;
@@ -575,7 +582,7 @@ function gerarPDF() {
     });
   };
   sec('pagar', 'Vencimento', [217, 72, 64]);
-  sec('receber', 'Recebimento', [30, 142, 62]);
+  sec('receber', 'Previsão', [30, 142, 62]);
   const n = doc.internal.getNumberOfPages(), w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
   for (let i = 1; i <= n; i++) {
     doc.setPage(i); doc.setFontSize(9); doc.setTextColor(110);
@@ -590,7 +597,7 @@ async function exportarCSV() {
     const s = await base().collection('contas').get();
     const L = s.docs.map(d => d.data()).sort((a, b) => a.venc.localeCompare(b.venc));
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-    const linhas = [['Tipo', 'Origem', 'Descrição', 'Categoria', 'Valor', 'Compra', 'Vencimento/Recebimento', 'Situação', 'Data baixa', 'Parcela', 'Obs'].join(';')];
+    const linhas = [['Tipo', 'Origem', 'Descrição', 'Categoria', 'Valor', 'Compra', 'Vencimento/Previsão', 'Situação', 'Data baixa', 'Parcela', 'Obs'].join(';')];
     L.forEach(c => linhas.push([c.tipo === 'pagar' ? 'Pagar' : 'Receber', c.escopo, c.descricao, c.categoria, String(c.valor).replace('.', ','), fmtData(c.dataCompra), fmtData(c.venc), stInfo(c).t, fmtData(c.dataBaixa), c.parcela || '', c.obs || ''].map(q).join(';')));
     const blob = new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'controle-de-contas.csv'; a.click();
@@ -643,6 +650,7 @@ document.addEventListener('click', async ev => {
       } catch (e) { toast('Erro: ' + e.message); }
       return;
     }
+    case 'instalar': return instalarApp();
     case 'pdf': return gerarPDF();
     case 'csv': return exportarCSV();
     case 'delcat': {
@@ -665,6 +673,26 @@ document.addEventListener('change', ev => {
 });
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') fechar(); });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && !$('#auth').hidden && e.target.tagName === 'INPUT') fazerLogin(); });
+
+/* ---------- instalar app (PWA) ---------- */
+let promptInstalar = null;
+const instalado = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const ehIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+function atualizaBtnInstalar() { const b = $('#btnInstalar'); if (b) b.hidden = instalado(); }
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptInstalar = e; atualizaBtnInstalar(); });
+window.addEventListener('appinstalled', () => { promptInstalar = null; atualizaBtnInstalar(); const c = $('#cardInst'); if (c) c.hidden = true; toast('App instalado!'); });
+async function instalarApp() {
+  if (promptInstalar) {
+    promptInstalar.prompt();
+    await promptInstalar.userChoice.catch(() => {});
+    promptInstalar = null; return;
+  }
+  modal(ehIOS()
+    ? `<h3>Instalar no iPhone</h3><div style="line-height:1.7">1. Abra este site no <b>Safari</b>.<br>2. Toque no botão <b>Compartilhar</b> (quadrado com seta para cima).<br>3. Escolha <b>Adicionar à Tela de Início</b>.<br>4. Toque em <b>Adicionar</b>.</div><div class="mbtns"><button class="btn-p" data-act="fechar">Entendi</button></div>`
+    : `<h3>Instalar no celular</h3><div style="line-height:1.7">1. Abra este site no <b>Chrome</b>.<br>2. Toque no menu <b>⋮</b> (canto superior direito).<br>3. Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</div><div class="mbtns"><button class="btn-p" data-act="fechar">Entendi</button></div>`);
+}
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+atualizaBtnInstalar();
 
 /* ---------- início ---------- */
 if (!CONFIGURADO) {
