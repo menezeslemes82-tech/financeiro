@@ -8,6 +8,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Contas">
 <link rel="manifest" href="/manifest.json">
+<script>
+window.__pwa = null;
+window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__pwa = e; if (window.__pwaPronto) window.__pwaPronto(); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+</script>
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>Controle de Contas</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b4f57'/%3E%3Cpath d='M18 14h28v38l-7-4-7 4-7-4-7 4z' fill='none' stroke='%23fff' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M25 26h14M25 35h14' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -675,13 +680,18 @@ $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') fechar
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && !$('#auth').hidden && e.target.tagName === 'INPUT') fazerLogin(); });
 
 /* ---------- instalar app (PWA) ---------- */
-let promptInstalar = null;
+let promptInstalar = window.__pwa;
 const instalado = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const ehIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
 function atualizaBtnInstalar() { const b = $('#btnInstalar'); if (b) b.hidden = instalado(); }
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptInstalar = e; atualizaBtnInstalar(); });
+window.__pwaPronto = () => { promptInstalar = window.__pwa; atualizaBtnInstalar(); };
 window.addEventListener('appinstalled', () => { promptInstalar = null; atualizaBtnInstalar(); const c = $('#cardInst'); if (c) c.hidden = true; toast('App instalado!'); });
 async function instalarApp() {
+  if (!promptInstalar && !ehIOS()) {
+    toast('Preparando a instalação…');
+    for (let i = 0; i < 8 && !window.__pwa; i++) await new Promise(r => setTimeout(r, 250));
+    promptInstalar = window.__pwa;
+  }
   if (promptInstalar) {
     promptInstalar.prompt();
     await promptInstalar.userChoice.catch(() => {});
@@ -691,7 +701,6 @@ async function instalarApp() {
     ? `<h3>Instalar no iPhone</h3><div style="line-height:1.7">1. Abra este site no <b>Safari</b>.<br>2. Toque no botão <b>Compartilhar</b> (quadrado com seta para cima).<br>3. Escolha <b>Adicionar à Tela de Início</b>.<br>4. Toque em <b>Adicionar</b>.</div><div class="mbtns"><button class="btn-p" data-act="fechar">Entendi</button></div>`
     : `<h3>Instalar no celular</h3><div style="line-height:1.7">1. Abra este site no <b>Chrome</b>.<br>2. Toque no menu <b>⋮</b> (canto superior direito).<br>3. Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</div><div class="mbtns"><button class="btn-p" data-act="fechar">Entendi</button></div>`);
 }
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 atualizaBtnInstalar();
 
 /* ---------- início ---------- */
