@@ -7,11 +7,51 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Contas">
-<link rel="manifest" href="/manifest.json">
 <script>
-window.__pwa = null;
-window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__pwa = e; if (window.__pwaPronto) window.__pwaPronto(); });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+/* ===== PWA: manifest criado em JS, evento de instalação e service worker ===== */
+(function () {
+  function icone(sz) {
+    var c = document.createElement('canvas'); c.width = c.height = sz;
+    var x = c.getContext('2d'), u = sz / 64;
+    x.fillStyle = '#0b4f57'; x.fillRect(0, 0, sz, sz);
+    x.strokeStyle = '#fff'; x.lineWidth = 4 * u; x.lineJoin = 'round'; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(18 * u, 14 * u); x.lineTo(46 * u, 14 * u); x.lineTo(46 * u, 52 * u); x.lineTo(39 * u, 48 * u);
+    x.lineTo(32 * u, 52 * u); x.lineTo(25 * u, 48 * u); x.lineTo(18 * u, 52 * u); x.closePath(); x.stroke();
+    x.beginPath(); x.moveTo(25 * u, 26 * u); x.lineTo(39 * u, 26 * u); x.moveTo(25 * u, 35 * u); x.lineTo(39 * u, 35 * u); x.stroke();
+    return c.toDataURL('image/png');
+  }
+  var i192 = icone(192), i512 = icone(512), raiz = location.origin + '/';
+  var manifest = {
+    id: raiz, name: 'Controle de Contas', short_name: 'Contas', description: 'Pagar, receber e acompanhar seu caixa',
+    start_url: raiz, scope: raiz, display: 'standalone', orientation: 'portrait',
+    background_color: '#0b4f57', theme_color: '#0b4f57', lang: 'pt-BR',
+    icons: [
+      { src: i192, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: i512, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: i192, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: i512, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+    ]
+  };
+  var l = document.createElement('link'); l.rel = 'manifest';
+  l.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+  document.head.appendChild(l);
+  var a = document.createElement('link'); a.rel = 'apple-touch-icon'; a.href = i192; document.head.appendChild(a);
+
+  // guarda o evento de instalação para usar no botão "Baixar app"
+  window.__pwa = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__pwa = e; if (window.__pwaPronto) window.__pwaPronto(); });
+
+  // service worker (network-first) + recarrega a página quando sai versão nova
+  if ('serviceWorker' in navigator) {
+    var tinha = !!navigator.serviceWorker.controller, recarregando = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!tinha || recarregando) return; recarregando = true; location.reload();
+    });
+    navigator.serviceWorker.register('/sw.js').then(function (reg) {
+      reg.update(); setInterval(function () { reg.update(); }, 30 * 60 * 1000);
+    }).catch(function () {});
+  }
+})();
 </script>
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>Controle de Contas</title>
@@ -129,7 +169,7 @@ nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stro
 <!-- APP -->
 <div id="app" hidden>
   <header>
-    <div class="hdr"><h2 id="titulo">Contas a pagar</h2><button class="inst" id="btnInstalar" data-act="instalar" hidden>⬇ Instalar app</button></div>
+    <div class="hdr"><h2 id="titulo">Contas a pagar</h2><button class="inst" id="btnInstalar" data-act="instalar" hidden>⬇ Baixar app</button></div>
     <div class="seg" id="segEsc">
       <button data-act="escopo" data-v="tudo">Tudo</button>
       <button data-act="escopo" data-v="pessoal">👤 Pessoal</button>
@@ -208,7 +248,7 @@ const ICO = {
   balanco: '<svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>',
   mais: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>'
 };
-const TITULOS = { pagar: 'Contas a pagar', receber: 'Contas a receber', balanco: 'Balanço mensal', mais: 'Mais opções' };
+const TITULOS = { pagar: 'Contas a pagar', receber: 'Contas a receber', balanco: 'Balanço mensal', mais: 'Ajustes' };
 const ESC_LABEL = { tudo: 'Pessoal + Fazenda', pessoal: 'Pessoal', fazenda: 'Fazenda' };
 
 /* ---------- categorias ---------- */
@@ -291,7 +331,7 @@ function renderTudo() {
   $('#mesInput').value = S.mes;
   $('#monthbar').hidden = S.tab === 'mais';
   $('#nav').innerHTML = ['pagar', 'receber', 'balanco', 'mais'].map(t =>
-    `<button data-act="tab" data-v="${t}" class="${S.tab === t ? 'on' : ''}">${ICO[t]}${{ pagar: 'A pagar', receber: 'A receber', balanco: 'Balanço', mais: 'Mais' }[t]}</button>`).join('');
+    `<button data-act="tab" data-v="${t}" class="${S.tab === t ? 'on' : ''}">${ICO[t]}${{ pagar: 'A pagar', receber: 'A receber', balanco: 'Balanço', mais: 'Ajustes' }[t]}</button>`).join('');
   const c = $('#content');
   if (S.tab === 'pagar' || S.tab === 'receber') {
     c.innerHTML = `<div id="sumBox"></div>
@@ -556,8 +596,8 @@ function renderMais() {
       <button class="btn-o" data-act="logout">Sair</button></div>
     <div class="card"><h3>Categorias próprias</h3>
       ${cust.length ? cust.map(c => `<div class="catrow"><span>${esc(c.n)} <span class="tag ${c.e}">${c.e === 'fazenda' ? 'Fazenda' : 'Pessoal'}</span> <span class="tag">${c.t === 'pagar' ? 'Pagar' : 'Receber'}</span></span><button class="ico" data-act="delcat" data-i="${c.i}">🗑</button></div>`).join('') : '<div class="hint">Nenhuma ainda. Crie ao lançar uma conta, escolhendo “＋ Nova categoria…”.</div>'}</div>
-    <div class="card" id="cardInst" ${instalado() ? 'hidden' : ''}><h3>Instalar no celular</h3><div class="hint" style="margin:0 0 10px">Fica um ícone na tela inicial, abre em tela cheia como um aplicativo.</div>
-      <button class="btn-o g" data-act="instalar">⬇ Baixar o app</button></div>
+    <div class="card" id="cardInst" ${instalado() ? 'hidden' : ''}><h3>Baixar app</h3><div class="hint" style="margin:0 0 10px">Instale no celular: fica um ícone na tela inicial e abre em tela cheia, como um aplicativo.</div>
+      <button class="btn-o g" data-act="instalar">⬇ Baixar app</button></div>
     <div class="card"><h3>Exportar</h3><div class="hint" style="margin:0 0 10px">Planilha com todos os lançamentos (abre no Excel).</div>
       <button class="btn-o" data-act="csv">Baixar CSV</button></div>
     <div class="foot">AIMEX SOFTWARE</div>`;
