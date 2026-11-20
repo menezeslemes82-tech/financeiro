@@ -161,6 +161,8 @@ html{font-size:calc(16px*var(--fs,1.15))}
 .rangeres b{display:block;font-size:1.7rem;color:var(--teal)}
 .rangeres.g b{color:var(--green)}
 .rangeres div{font-size:.9rem;font-weight:600;margin-top:2px}
+.sec{margin:14px 2px 8px;color:var(--teal);font-size:1.25rem}
+.bal{font-size:.95rem}.bal b{font-size:1.35rem}
 </style>
 </head>
 <body>
@@ -286,7 +288,7 @@ const S = {
   escopo: localStorage.getItem('escopo') || 'tudo',
   filtro: 'todas', busca: '', contas: [], pendentes: [], saldos: {}, custom: [],
   edit: null, form: { escopo: 'fazenda' }, atrasadas: false,
-  diaDe: null, diaAte: null, fonte: localStorage.getItem('fonte') || '1.15'
+  mov: {}, diaDe: null, diaAte: null, fonte: localStorage.getItem('fonte') || '1.15'
 };
 document.documentElement.style.setProperty('--fs', S.fonte);
 let unsubs = [], unsubMes = null;
@@ -326,6 +328,15 @@ function iniciarSessao() {
   unsubs.push(base().collection('saldos').onSnapshot(s => { S.saldos = {}; s.forEach(d => S.saldos[d.id] = d.data()); renderDados(); }));
   unsubs.push(base().collection('config').doc('categorias').onSnapshot(d => { S.custom = (d.exists && d.data().lista) || []; renderDados(); }));
   unsubs.push(base().collection('contas').where('status', '==', 'pendente').onSnapshot(s => { S.pendentes = s.docs.map(d => ({ id: d.id, ...d.data() })); renderDados(); }));
+  // todos os lançamentos já pagos/recebidos: base do saldo automático entre os meses
+  unsubs.push(base().collection('contas').where('status', '==', 'pago').onSnapshot(sn => {
+    const m = {};
+    sn.forEach(d => {
+      const c = d.data(), e = c.escopo === 'fazenda' ? 'fazenda' : 'pessoal';
+      (m[c.mes] = m[c.mes] || { pessoal: 0, fazenda: 0 })[e] += (c.tipo === 'receber' ? 1 : -1) * c.valor;
+    });
+    S.mov = m; renderDados();
+  }));
   ouvirMes();
   renderTudo();
 }
@@ -336,7 +347,7 @@ function ouvirMes() {
     e => toast('Erro ao carregar: ' + e.message)
   );
 }
-function encerrarSessao() { unsubs.forEach(u => u()); unsubs = []; if (unsubMes) unsubMes(); unsubMes = null; S.contas = []; S.pendentes = []; S.saldos = {}; }
+function encerrarSessao() { unsubs.forEach(u => u()); unsubs = []; if (unsubMes) unsubMes(); unsubMes = null; S.contas = []; S.pendentes = []; S.saldos = {}; S.mov = {}; }
 
 /* ---------- render base ---------- */
 function renderTudo() {
@@ -563,18 +574,35 @@ function modalSaldo(modo) {
   const ini = modo === 'ini';
   const vP = ini ? inicio('pessoal') : calc('pessoal').atual, vF = ini ? inicio('fazenda') : calc('fazenda').atual;
   modal(`<h3>${ini ? 'Saldo inicial de ' : 'Encerrar '}${mesLabel(S.mes)}</h3>
-    <div class="hint">${ini ? 'Informe quanto tinha em caixa no começo do mês.' : 'Registre o saldo final REALIZADO (confira com o banco/caixa). Ele vira o saldo inicial do mês seguinte.'}</div>
+    <div class="hint">${ini ? 'O saldo inicial já vem automático do mês anterior. Só altere se quiser informar outro valor.' : 'Opcional: o saldo já passa sozinho para o mês seguinte. Use para corrigir se o valor real do banco/caixa for diferente.'}</div>
     <label>👤 Pessoal</label><input id="m_sp" class="money" inputmode="numeric" value="${moneyIn(vP)}">
     <label>🌾 Fazenda</label><input id="m_sf" class="money" inputmode="numeric" value="${moneyIn(vF)}">
+    ${ini ? '<button class="link" data-act="saldoauto">↺ Voltar para o saldo automático do mês anterior</button>' : ''}
     <div class="mbtns"><button class="btn-o" data-act="fechar">Cancelar</button><button class="btn-p" data-act="oksaldo" data-m="${modo}">Salvar</button></div>`);
 }
 
 /* ---------- balanço ---------- */
+// Saldo inicial do mês: valor informado na mão, senão vem automático dos meses anteriores
+// (último fechamento/saldo informado + tudo que foi recebido e pago depois dele).
+function inicioManual(s) {
+  const d = S.saldos[S.mes], k = s === 'pessoal' ? 'P' : 'F';
+  return !!(d && d['inicio' + k] != null);
+}
 function inicio(s) {
-  const k = s === 'pessoal' ? 'P' : 'F';
-  const d = S.saldos[S.mes]; if (d && d['inicio' + k] != null) return d['inicio' + k];
-  const p = S.saldos[mesAnt(S.mes)]; if (p && p['fech' + k] != null) return p['fech' + k];
-  return 0;
+  const k = s === 'pessoal' ? 'P' : 'F', d = S.saldos[S.mes];
+  if (d && d['inicio' + k] != null) return d['inicio' + k];
+  const conhecidos = Object.keys(S.mov).concat(Object.keys(S.saldos)).sort();
+  if (!conhecidos.length) return 0;
+  const menor = conhecidos[0];
+  let acc = 0, m = mesAnt(S.mes);
+  while (m >= menor) {
+    const x = S.saldos[m];
+    if (x && x['fech' + k] != null) return r2(x['fech' + k] + acc);
+    acc += (S.mov[m] && S.mov[m][s]) || 0;
+    if (x && x['inicio' + k] != null) return r2(x['inicio' + k] + acc);
+    m = mesAnt(m);
+  }
+  return r2(acc);
 }
 function calc(esc) {
   const L = S.contas.filter(c => esc === 'tudo' || c.escopo === esc);
@@ -590,30 +618,28 @@ function renderBalanco() {
   S.contas.filter(c => c.tipo === 'pagar' && visivel(c)).forEach(c => { const k = c.categoria || 'Sem categoria'; porCat[k] = (porCat[k] || 0) + c.valor; });
   const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]);
   const maxC = cats.length ? cats[0][1] : 1;
-  let html = `<div style="margin-top:12px" class="grid2">
-    <div class="bal b1"><span>Caixa no início do mês</span><b>${brl(b.ini)}</b></div>
-    <div class="bal b2"><span>Caixa atual</span><b>${brl(b.atual)}</b></div>
-    <div class="bal b3"><span>Total a pagar no mês</span><b>${brl(b.pagarT)}</b></div>
-    <div class="bal b2"><span>Previsto a receber no mês</span><b>${brl(b.recT)}</b></div></div>
-    <div class="card"><h3>Movimentação do mês</h3>
-      <div class="mov"><span>Recebido:</span><span class="pos">${brl(b.rec)}</span></div>
-      <div class="mov"><span>Pago:</span><span class="neg">${brl(b.pago)}</span></div>
-      <div class="mov"><span>Ainda a receber:</span><span>${brl(b.faltaReceber)}</span></div>
-      <div class="mov"><span>Ainda a pagar:</span><span>${brl(b.faltaPagar)}</span></div></div>
-    <div class="final"><small>Caixa previsto no fim do mês</small><b>${brl(b.prev)}</b></div>
-    <div class="hint" style="text-align:center">Saldo inicial + recebimentos − pagamentos${fechado ? ' • mês encerrado ✔' : ''}</div>`;
+  let html = `<h3 class="sec">Movimentação do mês</h3>
+    <div class="grid2">
+      <div class="bal b1"><span>Caixa no início do mês</span><b>${brl(b.ini)}</b></div>
+      <div class="bal b3"><span>Contas pagas</span><b>${brl(b.pago)}</b></div>
+      <div class="bal b3"><span>Contas a pagar</span><b>${brl(b.faltaPagar)}</b></div>
+      <div class="bal b2"><span>Recebidos</span><b>${brl(b.rec)}</b></div>
+      <div class="bal b2"><span>A receber</span><b>${brl(b.faltaReceber)}</b></div>
+      <div class="bal b2"><span>Caixa no dia</span><b class="${b.atual < 0 ? 'neg' : ''}">${brl(b.atual)}</b></div>
+    </div>
+    <div class="hint" style="text-align:center;margin-top:10px">${fechado ? 'Mês encerrado ✔ • ' : ''}${(S.escopo === 'tudo' ? (inicioManual('pessoal') || inicioManual('fazenda')) : inicioManual(S.escopo)) ? 'Saldo inicial informado manualmente.' : 'Saldo inicial vindo automaticamente do mês anterior.'}</div>`;
   if (S.escopo === 'tudo') {
     const P = calc('pessoal'), F = calc('fazenda');
     html += `<div class="card"><h3>Pessoal × Fazenda</h3>
       <div class="mov" style="color:var(--mut);font-size:13px"><span></span><span>👤 Pessoal &nbsp;|&nbsp; 🌾 Fazenda</span></div>
-      ${[['A pagar', 'pagarT'], ['A receber', 'recT'], ['Caixa atual', 'atual'], ['Caixa previsto', 'prev']].map(([l, k]) =>
+      ${[['A pagar', 'pagarT'], ['A receber', 'recT'], ['Caixa no dia', 'atual'], ['Caixa previsto', 'prev']].map(([l, k]) =>
         `<div class="mov"><span>${l}</span><span>${brl(P[k])} | ${brl(F[k])}</span></div>`).join('')}</div>`;
   }
   if (cats.length) html += `<div class="card"><h3>Gastos por categoria</h3>${cats.map(([k, v]) =>
     `<div class="bar"><div class="t"><span>${esc(k)}</span><span>${brl(v)}</span></div><div class="b"><i style="width:${Math.max(3, v / maxC * 100)}%"></i></div></div>`).join('')}</div>`;
   html += `<div class="grid2" style="margin-top:6px"><button class="btn-o" data-act="saldoini">Ajustar saldo inicial</button><button class="btn-o g" data-act="encerrar">Encerrar o mês</button></div>
     <button class="btn-p" data-act="pdf">📄 Baixar relatório em PDF</button>
-    <div class="hint" style="text-align:center;margin-top:8px">Ao encerrar o mês, registre o saldo final realizado.</div>`;
+    <div class="hint" style="text-align:center;margin-top:8px">O saldo passa sozinho para o mês seguinte. “Encerrar o mês” serve só para corrigir se o valor real for outro.</div>`;
   d.innerHTML = html;
 }
 
@@ -719,6 +745,9 @@ document.addEventListener('click', async ev => {
     case 'fechar': return fechar();
     case 'saldoini': return modalSaldo('ini');
     case 'encerrar': return modalSaldo('fim');
+    case 'saldoauto':
+      try { await base().collection('saldos').doc(S.mes).set({ inicioP: FV.delete(), inicioF: FV.delete() }, { merge: true }); fechar(); toast('Saldo inicial automático.'); } catch (e) { toast('Erro: ' + e.message); }
+      return;
     case 'oksaldo': {
       const sp = r2(parseMoney($('#m_sp').value)), sf = r2(parseMoney($('#m_sf').value));
       const ini = el.dataset.m === 'ini';
